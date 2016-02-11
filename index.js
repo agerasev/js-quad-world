@@ -110,4 +110,4 @@ function Client(websocket) {
 
 // Export
 
-module.exports.WebSocketHandle = Client;
+module.exports.Client = Client;
