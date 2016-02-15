@@ -1,9 +1,3 @@
-// Block
-
-function Block(type) {
-	this.type = type;
-}
-
 // Map
 
 function Map() {
@@ -22,24 +16,45 @@ function Map() {
 
 var map = new Map();
 
+var Entity = require('./public/entity.js').Entity;
+
 // Messages
 
 var Msg = {
-	Map: function (w, h) {
-		this.width = w;
-		this.height = h;
+	MapInfo: function (size) {
+		this.type = 'MapInfo';
+		this.size = size;
 	},
-	Chunk: function(x, y, w, h, data) {
-		this.x = x;
-		this.y = y;
-		this.w = w;
-		this.h = h;
+	ChunkUpdate: function(pos, size, data) {
+		this.type = 'ChunkUpdate';
+		this.pos = pos;
+		this.size = size;
 		this.data = data;
 	},
-	Block: function(x, y, block) {
-		this.x = x;
-		this.y = y;
+	BlockUpdate: function(pos, block) {
+		this.type = 'BlockUpdate';
+		this.pos = pos;
 		this.block = block;
+	},
+	EntityCreate: function(entity) {
+		this.type = 'EntityCreate';
+		this.id = entity.id;
+		this.pos = entity.pos;
+		this.size = entity.size;
+	},
+	EntityDestroy: function(id) {
+		this.type = 'EntityDestroy';
+		this.id = id;
+	},
+	EntityUpdate: function(entity) {
+		this.type = 'EntityUpdate';
+		this.id = entity.id;
+		// ...
+	},
+	EntityMove: function(entity) {
+		this.type = 'EntityMove';
+		this.id = id;
+		this.pos = pos;
 	}
 };
 
@@ -64,10 +79,10 @@ function removeClient(id) {
 	clients[id] = null;
 }
 
-function broadcast(pack) {
+function broadcast(pack, predicate) {
 	for(var i = 1; i < clients.length; ++i) {
 		var client = clients[i];
-		if(client) {
+		if(client && predicate && predicate(client)) {
 			client.send(pack);
 		}
 	}
@@ -81,13 +96,26 @@ function Client(websocket) {
 
 	self.open = function() {
 		self.id = addClient(self);
-		self.send(new Msg.Map(map.width, map.height));
-		self.send(new Msg.Chunk(0, 0, map.width, map.height, map.data));
+		self.entity = new Entity(self.id, {x: map.width*Math.random(), y: map.height*Math.random()});
+
+		self.send(new Msg.MapInfo({x: map.width, y: map.height}));
+		self.send(new Msg.ChunkUpdate({x: 0, y: 0}, {x: map.width, y: map.height}, map.data));
+		for(var i = 1; i < clients.length; ++i) {
+			var client = clients[i];
+			if(client) {
+				self.send(new Msg.EntityCreate(client.entity));
+			}
+		}
+
+		var newId = self.id;
+		broadcast(new Msg.EntityCreate(self.entity), function(client) {return client.id != newId});
+
 		console.log('open ' + self.id);
 	}
 
 	self.close = function(code, message) {
 		removeClient(self.id);
+		broadcast(new Msg.EntityDestroy(self.id));
 		console.log('close: ' + code + ' ' + message);
 	}
 
@@ -106,6 +134,8 @@ function Client(websocket) {
 	self.send = function(pack) {
 		self.websocket.send(JSON.stringify(pack));
 	}
+
+	self.entity = null;
 }
 
 // Export
