@@ -11,6 +11,10 @@ function App() {
 	self.map = null;
 
 	self.entities = {};
+	self.player = null;
+	self.playerInfo = {
+		moved: false
+	};
 
 	self.init = function() {
 		self.canvas = document.getElementById('canvas_main');
@@ -53,6 +57,12 @@ function App() {
 
 				case 'EntityDestroy':
 				delete self.entities[pack.id];
+				if(pack.id == self.player.id)
+					self.player = null;
+				break;
+
+				case 'EntityBind':
+				self.player = self.entities[pack.id];
 				break;
 
 				case 'EntityUpdate':
@@ -65,7 +75,18 @@ function App() {
 			}
 		};
 
+		self.initInput();
 		self.resize();
+
+		var solvePeriod = 40;
+		self.solveInterval = setInterval(function() {
+			self.solve(solvePeriod);
+		}, solvePeriod);
+
+		var reportPeriod = 100;
+		self.reportInterval = setInterval(function() {
+			self.report(reportPeriod);
+		}, reportPeriod);
 
 		window.requestAnimationFrame(self.render);
 	};
@@ -109,6 +130,78 @@ function App() {
 		}
 		
 		window.requestAnimationFrame(self.render);
+	}
+
+	self.solve = function (ms) {
+		var player = self.player;
+		if(player) {
+			var input = self.input;
+			if(input.right - input.left != 0 || input.up - input.down != 0) {
+				player.pos = Vec2.add(player.pos, Vec2.mul(Vec2.create(input.right - input.left, input.up - input.down), 4*0.001*ms));
+				self.playerInfo.moved = true;
+			}
+		}
+	}
+	self.solveInterval = null;
+
+	self.report = function (ms) {
+		var player = self.player;
+		var playerInfo = self.playerInfo;
+		if(player) {
+			if(playerInfo.moved) {
+				var pack = {
+					type: 'PlayerMove',
+					pos: player.pos
+				};
+				self.websocket.send(JSON.stringify(pack));
+				playerInfo.moved = false;
+			}
+		}
+	}
+	self.reportInterval = null;
+
+	self.input = {
+		up: 0,
+		down: 0,
+		left: 0,
+		right: 0
+	};
+
+	self.initInput = function() {
+		var input = self.input;
+		function getKeys(mode, key) {
+
+			var value = 0;
+			if(mode == 'down')
+				value = 1;
+
+			switch(key) {
+				case 87:
+				input.up = value;
+				break;
+				case 65:
+				input.left = value;
+				break;
+				case 83:
+				input.down = value;
+				break;
+				case 68:
+				input.right = value;
+				break;
+			}
+		}
+		window.onkeydown = function(e) {
+			getKeys('down', e.keyCode);	
+		};
+		window.onkeyup = function(e) {
+			getKeys('up', e.keyCode);
+		};
+		window.onblur = function(e) {
+			self.input.up = 0;
+			self.input.down = 0;
+			self.input.left = 0;
+			self.input.right = 0;
+		}
 	}
 }
 

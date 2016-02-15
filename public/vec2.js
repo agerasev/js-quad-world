@@ -18,6 +18,9 @@ Vec2.sub = function(a, b) {
 Vec2.mul = function(a, b) {
 	return {x: a.x*b, y: a.y*b};
 }
+Vec2.mulv = function(a, b) {
+	return {x: a.x*b.x, y: a.y*b.y};
+}
 Vec2.div = function(a, b) {
 	return {x: a.x/b, y: a.y/b};
 }
@@ -30,3 +33,5 @@ Vec2.cross = function(a, b) {
 Vec2.toString = function(a) {
 	return "(" + a.x + ", " + a.y + ")";
 }
+
+module.exports.Vec2 = Vec2;

@@ -13,3 +13,5 @@ function Map(size) {
 		return self.data[p.y*self.size.x + p.x];
 	}
 }
+
+module.exports.Map = Map;

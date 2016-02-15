@@ -1,22 +1,19 @@
-// Map
+// Vectors
 
-function Map() {
-	var self = this;
+var Vec2 = require('./public/vec2.js').Vec2;
 
-	self.width = 0x10;
-	self.height = 0x10;
-
-	self.data = [];
-	self.data.length = self.width*self.height;
-
-	for(var i = 0; i < self.data.length; ++i) {
-		self.data[i] = Math.floor(2*Math.random());
-	}
-}
-
-var map = new Map();
+// Entity
 
 var Entity = require('./public/entity.js').Entity;
+
+// Map
+
+var Map = require('./public/map.js').Map;
+
+var map = new Map({x: 0x10, y: 0x10});
+for(var i = 0; i < map.data.length; ++i) {
+	map.data[i] = Math.floor(2*Math.random());
+}
 
 // Messages
 
@@ -46,6 +43,10 @@ var Msg = {
 		this.type = 'EntityDestroy';
 		this.id = id;
 	},
+	EntityBind: function(entity) {
+		this.type = 'EntityBind';
+		this.id = entity.id;
+	},
 	EntityUpdate: function(entity) {
 		this.type = 'EntityUpdate';
 		this.id = entity.id;
@@ -53,8 +54,8 @@ var Msg = {
 	},
 	EntityMove: function(entity) {
 		this.type = 'EntityMove';
-		this.id = id;
-		this.pos = pos;
+		this.id = entity.id;
+		this.pos = entity.pos;
 	}
 };
 
@@ -82,7 +83,7 @@ function removeClient(id) {
 function broadcast(pack, predicate) {
 	for(var i = 1; i < clients.length; ++i) {
 		var client = clients[i];
-		if(client && predicate && predicate(client)) {
+		if(client && (!predicate || predicate(client))) {
 			client.send(pack);
 		}
 	}
@@ -96,33 +97,52 @@ function Client(websocket) {
 
 	self.open = function() {
 		self.id = addClient(self);
-		self.entity = new Entity(self.id, {x: map.width*Math.random(), y: map.height*Math.random()});
+		self.entity = new Entity(self.id, Vec2.mulv(map.size, Vec2.create(Math.random(), Math.random())));
 
-		self.send(new Msg.MapInfo({x: map.width, y: map.height}));
-		self.send(new Msg.ChunkUpdate({x: 0, y: 0}, {x: map.width, y: map.height}, map.data));
+		self.send(new Msg.MapInfo(map.size));
+		self.send(new Msg.ChunkUpdate(Vec2.create(), map.size, map.data));
 		for(var i = 1; i < clients.length; ++i) {
 			var client = clients[i];
 			if(client) {
 				self.send(new Msg.EntityCreate(client.entity));
 			}
 		}
+		self.send(new Msg.EntityBind(self.entity));
 
-		var newId = self.id;
-		broadcast(new Msg.EntityCreate(self.entity), function(client) {return client.id != newId});
+		var _id = self.id;
+		broadcast(new Msg.EntityCreate(self.entity), function(client) {return client.id != _id});
 
 		console.log('open ' + self.id);
 	}
 
 	self.close = function(code, message) {
+		var _id = self.id;
+		broadcast(new Msg.EntityDestroy(self.id), function(client) {return client.id != _id});
 		removeClient(self.id);
-		broadcast(new Msg.EntityDestroy(self.id));
-		console.log('close: ' + code + ' ' + message);
+		console.log('close ' + self.id + ': ' + code + ' ' + message);
 	}
 
 	self.receive = function(message, flags) {
 		if(flags.binary) {
 			console.log('receive binary data');
 		} else {
+			var pack = null;
+			try {
+				pack = JSON.parse(message);
+			} catch(e) {
+				console.err('parse error: ' + e);
+			}
+
+			if(pack) {
+				switch(pack.type) {
+					case 'PlayerMove': {
+						self.entity.pos = pack.pos;
+						var _id = self.id;
+						broadcast(new Msg.EntityMove(self.entity), function(client) {return client.id != _id});
+					} break;
+				}
+			}
+
 			console.log('receive: ' + message);
 		}
 	}
