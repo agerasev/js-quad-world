@@ -2,11 +2,7 @@
 
 var Vec2 = require('./public/vec2.js').Vec2;
 
-// Entity
-
 var Entity = require('./public/entity.js').Entity;
-
-// Map
 
 var Map = require('./public/map.js').Map;
 
@@ -15,49 +11,10 @@ for(var i = 0; i < map.data.length; ++i) {
 	map.data[i] = Math.floor(2*Math.random());
 }
 
+
 // Messages
 
-var Msg = {
-	MapInfo: function (size) {
-		this.type = 'MapInfo';
-		this.size = size;
-	},
-	ChunkUpdate: function(pos, size, data) {
-		this.type = 'ChunkUpdate';
-		this.pos = pos;
-		this.size = size;
-		this.data = data;
-	},
-	BlockUpdate: function(pos, block) {
-		this.type = 'BlockUpdate';
-		this.pos = pos;
-		this.block = block;
-	},
-	EntityCreate: function(entity) {
-		this.type = 'EntityCreate';
-		this.id = entity.id;
-		this.pos = entity.pos;
-		this.size = entity.size;
-	},
-	EntityDestroy: function(id) {
-		this.type = 'EntityDestroy';
-		this.id = id;
-	},
-	EntityBind: function(entity) {
-		this.type = 'EntityBind';
-		this.id = entity.id;
-	},
-	EntityUpdate: function(entity) {
-		this.type = 'EntityUpdate';
-		this.id = entity.id;
-		// ...
-	},
-	EntityMove: function(entity) {
-		this.type = 'EntityMove';
-		this.id = entity.id;
-		this.pos = entity.pos;
-	}
-};
+var Msg = require('./message.js').Messages;
 
 // Clients
 
@@ -89,6 +46,32 @@ function broadcast(pack, predicate) {
 	}
 }
 
+// Events
+
+var event = require('./event.js');
+var Events = event.Events;
+var Bus = event.Bus;
+
+var bus = new Bus();
+bus.subscribe(function (event) {
+	console.log(JSON.stringify(event));
+	switch(event.type) {
+		case 'PlayerCreate': {
+			broadcast(new Msg.EntityCreate(event.entity), function(client) {return client.id != event.id});
+		} break;
+		case 'PlayerDestroy': {
+			broadcast(new Msg.EntityDestroy(event.id), function(client) {return client.id != event.id});
+		} break;
+		case 'PlayerMove': {
+			var entity = clients[event.id].entity;
+			entity.pos = event.pos;
+			broadcast(new Msg.EntityMove(entity), function(client) {return client.id != event.id});
+		} break;
+	}
+});
+
+// Client
+
 function Client(websocket) {
 
 	var self = this;
@@ -109,16 +92,14 @@ function Client(websocket) {
 		}
 		self.send(new Msg.EntityBind(self.entity));
 
-		var _id = self.id;
-		broadcast(new Msg.EntityCreate(self.entity), function(client) {return client.id != _id});
+		bus.emit(new Events.PlayerCreate(self.id, self.entity));
 
 		console.log('open ' + self.id);
 	}
 
 	self.close = function(code, message) {
-		var _id = self.id;
-		broadcast(new Msg.EntityDestroy(self.id), function(client) {return client.id != _id});
 		removeClient(self.id);
+		bus.emit(new Events.PlayerDestroy(self.id));
 		console.log('close ' + self.id + ': ' + code + ' ' + message);
 	}
 
@@ -136,14 +117,12 @@ function Client(websocket) {
 			if(pack) {
 				switch(pack.type) {
 					case 'PlayerMove': {
-						self.entity.pos = pack.pos;
-						var _id = self.id;
-						broadcast(new Msg.EntityMove(self.entity), function(client) {return client.id != _id});
+						bus.emit(new Events.PlayerMove(self.id, pack.pos));
 					} break;
 				}
 			}
 
-			console.log('receive: ' + message);
+			//console.log('receive: ' + message);
 		}
 	}
 
